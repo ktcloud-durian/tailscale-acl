@@ -1,0 +1,97 @@
+// durian Tailscale 정책 v3 (방화벽 정의서 v1.1 7번, 보안 기준서 NET-04·NET-06·DAT-04). 작성: 보안(송윤지)
+// 공개 저장소용: 이메일 없이 Tailscale 역할(autogroup)로만 사람을 지정함
+//   autogroup:member = tailnet 팀원 전체, autogroup:admin = 관리 콘솔에서 Admin 역할을 준 사람(운영 담당 5명)
+// 적힌 통신(grants)만 허용하고 나머지는 전부 막음. 아래 tests가 하나라도 실패하면 Tailscale이 저장을 거부함
+// 이 파일은 GitHub에서 고치고 PR로 올림 → PR에서 test, main 머지 시 apply (README 참고)
+// 이메일·키를 이 파일에 넣지 말 것 (공개 저장소. 워크플로가 이메일 모양이 있으면 실패시킴)
+//
+// 기준
+// - 온프렘 A(맥북)와 B(윈도우 VM)는 독립 클러스터 (11/21 확정) → A↔B 사이 통신 없음
+// - AWS는 AZ별 독립 클러스터, 각자 내장 DB (11/20) → AWS에서 온프렘 DB(3306)로 가는 길 없음
+// - 같은 사이트 안의 노드끼리(k3s 6443·8472·10250)는 각자 내부망(k3s-net, VPC)으로 통신하므로 Tailscale 규칙이 필요 없음
+// - Grafana(3000)·Alertmanager(9093)는 Monitor EC2에서 127.0.0.1에만 열고, tailscale serve로 팀원에게만 HTTPS로 보여줌
+//   (443 → Grafana, 8443 → Alertmanager). Prometheus(9090)는 SSM 포트 포워딩으로만
+{
+  "hosts": {
+    "kolla-api-a": "192.168.128.100",   // A OpenStack API (관리 VIP). A 호스트가 /32 경로를 광고
+    "kolla-api-b": "192.168.120.100"    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
+    // core-api 주소가 정해지면 위 줄 끝에 쉼표를 붙이고 추가: "core-api": "<core-api MetalLB 주소>"
+  },
+
+  "tagOwners": {
+    "tag:durian-master":   ["autogroup:admin"],   // AWS k3s 마스터 (install.sh: tag:durian-master)
+    "tag:durian-worker":   ["autogroup:admin"],   // AWS k3s 워커, Auto Scaling (install.sh: tag:durian-worker, 임시 기기)
+    "tag:durian-monitor":  ["autogroup:admin"],   // Monitor EC2 (Prometheus 수집, 보안 점검)
+    "tag:durian-onprem-a": ["autogroup:admin"],   // 온프렘 A k3s 노드 (마스터·워커)
+    "tag:durian-onprem-b": ["autogroup:admin"],   // 온프렘 B k3s 노드 (마스터·워커)
+    "tag:durian-router":   ["autogroup:admin"]    // A·B 호스트 PC (OpenStack API /32만 광고)
+  },
+
+  "autoApprovers": {
+    "routes": {
+      "192.168.128.100/32": ["tag:durian-router"],
+      "192.168.120.100/32": ["tag:durian-router"]
+      // core-api 주소가 정해지면: "<core-api 주소>/32": ["tag:durian-onprem-a"]  (B에 두면 onprem-b)
+    }
+  },
+
+  "grants": [
+    // 모니터링: Monitor → 온프렘 노드 지표 (Node Exporter는 노드의 Tailscale IP:9100에서만 들음)
+    { "src": ["tag:durian-monitor"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:9100"] },
+
+    // 보안 점검: Monitor → OpenStack API (reader 계정으로 조회만). 5000 Keystone, 8774 Nova, 9696 Neutron, 9292 Glance
+    { "src": ["tag:durian-monitor"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:5000", "tcp:8774", "tcp:9696", "tcp:9292"] },
+
+    // 서비스: AWS 웹 → 온프렘 내부 API (서비스 토큰 필수, 보안 기준서 DAT-05). 고객 DB 3306은 넣지 않음
+    // core-api 주소가 정해지면 주석을 풀기
+    // { "src": ["tag:durian-master", "tag:durian-worker"], "dst": ["core-api"], "ip": ["tcp:4000"] },
+
+    // 화면: 팀원 → Monitor EC2의 tailscale serve (443 Grafana, 8443 Alertmanager). 3000·9090·9093 포트 자체는 열지 않음
+    { "src": ["autogroup:member"], "dst": ["tag:durian-monitor"], "ip": ["tcp:443", "tcp:8443"] },
+
+    // 관리: 운영 담당만 온프렘 노드 SSH와 OpenStack 대시보드
+    { "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:22"] },
+    { "src": ["autogroup:admin"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:443"] },
+
+    // 각자 자기 기기끼리는 허용 (노트북 ↔ 자기 PC)
+    { "src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"] }
+  ],
+
+  // Tailscale SSH: 온프렘 노드에만, ubuntu 계정으로만, 접속할 때마다 다시 로그인 확인(check). root 접속은 허용하지 않음
+  // SSH 규칙의 src에는 역할 autogroup 중 autogroup:member만 쓸 수 있음. 실제로 들어갈 수 있는 사람은
+  // 위 grants의 tcp:22(autogroup:admin만)로 한 번 더 걸러짐. AWS 노드는 SSM으로만 접속하므로 넣지 않음
+  "ssh": [
+    { "action": "check", "src": ["autogroup:member"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "users": ["ubuntu"] }
+  ],
+
+
+  "tests": [
+    // Monitor는 지표·API 조회만. SSH·k8s API·DB는 못 감
+    { "src": "tag:durian-monitor",
+      "accept": ["tag:durian-onprem-a:9100", "tag:durian-onprem-b:9100", "kolla-api-a:5000", "kolla-api-b:5000"],
+      "deny":   ["tag:durian-onprem-a:22", "tag:durian-onprem-a:6443", "tag:durian-onprem-a:3306", "tag:durian-onprem-b:6443"] },
+
+    // AWS 노드는 온프렘 노드 지표·SSH·k8s API·DB, OpenStack API로 못 감 (DAT-04). core-api가 정해지면 "accept": ["core-api:4000"] 추가
+    { "src": "tag:durian-worker",
+      "deny":   ["tag:durian-onprem-a:9100", "tag:durian-onprem-a:22", "tag:durian-onprem-a:6443", "tag:durian-onprem-a:3306",
+                 "tag:durian-onprem-b:3306", "kolla-api-a:5000", "kolla-api-b:5000"] },
+    { "src": "tag:durian-master",
+      "deny":   ["tag:durian-onprem-a:3306", "tag:durian-onprem-b:3306", "tag:durian-onprem-a:6443"] },
+
+    // A와 B는 독립 클러스터: 서로 k8s API·kubelet·Flannel·DB·SSH 모두 막힘
+    { "src": "tag:durian-onprem-a",
+      "deny": ["tag:durian-onprem-b:6443", "tag:durian-onprem-b:10250", "tag:durian-onprem-b:3306", "tag:durian-onprem-b:22", "kolla-api-b:5000"] },
+    { "src": "tag:durian-onprem-b",
+      "deny": ["tag:durian-onprem-a:6443", "tag:durian-onprem-a:10250", "tag:durian-onprem-a:3306", "tag:durian-onprem-a:22", "kolla-api-a:5000"] },
+
+    // AWS·온프렘 서버는 모니터링 화면에 못 들어감 (화면은 사람만)
+    { "src": "tag:durian-worker", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090"] },
+
+    // 모니터링 화면(443·8443)은 서버 쪽에서 못 감. 3000·9090·9093 포트 자체는 아무도 못 감
+    { "src": "tag:durian-worker", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090", "tag:durian-monitor:9093"] },
+    { "src": "tag:durian-onprem-a", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:9090"] },
+
+    // 온프렘 노드는 AWS 노드로 먼저 연결하지 못함
+    { "src": "tag:durian-onprem-a", "deny": ["tag:durian-worker:6443", "tag:durian-master:6443", "tag:durian-monitor:9090"] }
+  ]
+}

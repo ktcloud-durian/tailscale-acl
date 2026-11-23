@@ -1,0 +1,62 @@
+# Tailscale ACL GitOps (보안 기준서 NET-04, PIP-01~05). 담당: 보안(송윤지), Tailscale 관리: 최동경
+# PR  → test : 문법 + policy.hujson 안 "tests" 실행 (읽기 전용 자격 증명)
+# main → apply: 테스트 통과하면 Tailscale에 적용 (쓰기 자격 증명, main 브랜치에서만 발급됨)
+# 비밀번호 같은 고정 키 없이 GitHub OIDC 토큰으로 로그인 (Tailscale workload identity federation)
+# 공개 저장소라 policy.hujson에 이메일이 들어가면 실패시킴 (사람은 autogroup으로만 지정)
+name: Tailscale ACL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC 토큰 발급 (Tailscale 로그인용)
+
+concurrency:
+  group: tailscale-acl   # 적용이 겹치지 않게 한 번에 하나만
+  cancel-in-progress: false
+
+jobs:
+  acl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: No emails in policy (공개 저장소)
+        run: |
+          if grep -nE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' policy.hujson; then
+            echo "policy.hujson에 이메일이 있어요. autogroup으로 바꿔 주세요"; exit 1
+          fi
+
+      # 마지막으로 적용한 버전을 기억해서, 콘솔에서 누가 따로 고쳤으면 덮어쓰지 않고 멈춤
+      - name: Fetch version-cache.json
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ./version-cache.json
+          key: version-cache.json-${{ github.run_id }}
+          restore-keys: |
+            version-cache.json-
+
+      - name: Test ACL (PR)
+        if: github.event_name == 'pull_request'
+        uses: tailscale/gitops-acl-action@5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a # v1.5.2
+        with:
+          oauth-client-id: ${{ secrets.TS_TEST_CLIENT_ID }}
+          audience: ${{ secrets.TS_TEST_AUDIENCE }}
+          tailnet: ${{ secrets.TS_TAILNET }}
+          action: test
+
+      - name: Apply ACL (main)
+        if: github.event_name == 'push'
+        uses: tailscale/gitops-acl-action@5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a # v1.5.2
+        with:
+          oauth-client-id: ${{ secrets.TS_APPLY_CLIENT_ID }}
+          audience: ${{ secrets.TS_APPLY_AUDIENCE }}
+          tailnet: ${{ secrets.TS_TAILNET }}
+          action: apply
