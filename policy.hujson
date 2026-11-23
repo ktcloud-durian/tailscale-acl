@@ -24,7 +24,7 @@
     "tag:durian-monitor":  ["autogroup:admin"],   // Monitor EC2 (Prometheus 수집, 보안 점검)
     "tag:durian-onprem-a": ["autogroup:admin"],   // 온프렘 A k3s 노드 (마스터·워커)
     "tag:durian-onprem-b": ["autogroup:admin"],   // 온프렘 B k3s 노드 (마스터·워커)
-    "tag:durian-router":   ["group:admins"],      // 온프렘 OpensStack A/B 
+    "tag:durian-router":   ["autogroup:admin"],   // 온프렘 OpensStack A/B
 
 		"tag:durian-os-a-master": ["autogroup:admin"], //유빈님 태그 삭제 예정
 		"tag:durian-os-a-worker": ["autogroup:admin"], //유빈님 태그 삭제 예정
