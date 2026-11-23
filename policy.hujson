@@ -24,7 +24,6 @@
     "tag:durian-monitor":  ["autogroup:admin"],   // Monitor EC2 (Prometheus 수집, 보안 점검)
     "tag:durian-onprem-a": ["autogroup:admin"],   // 온프렘 A k3s 노드 (마스터·워커)
     "tag:durian-onprem-b": ["autogroup:admin"],   // 온프렘 B k3s 노드 (마스터·워커)
-    "tag:durian-router":   ["autogroup:admin"]    // A·B 호스트 PC (OpenStack API /32만 광고)
   },
 
   "autoApprovers": {
