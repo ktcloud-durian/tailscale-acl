@@ -13,8 +13,8 @@
 //   (443 → Grafana, 8443 → Alertmanager). Prometheus(9090)는 SSM 포트 포워딩으로만
 {
   "hosts": {
-    "kolla-api-a": "192.168.128.100",   // A OpenStack API (관리 VIP). A 호스트가 /32 경로를 광고
-    "kolla-api-b": "192.168.120.100"    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
+    "kolla-api-a": "192.168.128.10",   // A OpenStack API (관리 VIP). A 호스트가 /32 경로를 광고
+    "kolla-api-b": "192.168.120.10"    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
     // core-api 주소가 정해지면 위 줄 끝에 쉼표를 붙이고 추가: "core-api": "<core-api MetalLB 주소>"
   },
 
@@ -24,12 +24,17 @@
     "tag:durian-monitor":  ["autogroup:admin"],   // Monitor EC2 (Prometheus 수집, 보안 점검)
     "tag:durian-onprem-a": ["autogroup:admin"],   // 온프렘 A k3s 노드 (마스터·워커)
     "tag:durian-onprem-b": ["autogroup:admin"],   // 온프렘 B k3s 노드 (마스터·워커)
+    "tag:durian-router":   ["group:admins"],      // 온프렘 OpensStack A/B 
+
+		"tag:durian-os-a-master": ["autogroup:admin"], //유빈님 태그 삭제 예정
+		"tag:durian-os-a-worker": ["autogroup:admin"], //유빈님 태그 삭제 예정
+		"tag:durian-os-a-host":   ["autogroup:admin"], //유빈님 태그 삭제 예정
   },
 
   "autoApprovers": {
     "routes": {
-      "192.168.128.100/32": ["tag:durian-router"],
-      "192.168.120.100/32": ["tag:durian-router"]
+      "192.168.128.10/32": ["tag:durian-router"],
+      "192.168.120.10/32": ["tag:durian-router"]
       // core-api 주소가 정해지면: "<core-api 주소>/32": ["tag:durian-onprem-a"]  (B에 두면 onprem-b)
     }
   },
