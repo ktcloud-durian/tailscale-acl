@@ -14,7 +14,9 @@
 {
   "hosts": {
     "kolla-api-a": "192.168.128.10",   // A OpenStack API (관리 VIP). A 호스트가 /32 경로를 광고
-    "kolla-api-b": "192.168.120.10"    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
+    "kolla-api-b": "192.168.120.10",    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
+    "db-a": "10.30.40.21/32", //A OpensStack DB
+    "db-b": "10.31.40.21/32"  //B OpensStack DB 
     // core-api 주소가 정해지면 위 줄 끝에 쉼표를 붙이고 추가: "core-api": "<core-api MetalLB 주소>"
   },
 
@@ -35,7 +37,9 @@
   "autoApprovers": {
     "routes": {
       "192.168.128.10/32": ["tag:durian-router"],
-      "192.168.120.10/32": ["tag:durian-router"]
+      "192.168.120.10/32": ["tag:durian-router"],
+      "10.30.40.21/32": ["tag:durian-onprem-a"], //tag:durian-onprem-a 노드는 db-a 주소만 승인
+      "10.31.40.21/32": ["tag:durian-onprem-b"] //tag:durian-onprem-b 노드는 db-b 주소만 승인
       // core-api 주소가 정해지면: "<core-api 주소>/32": ["tag:durian-onprem-a"]  (B에 두면 onprem-b)
     }
   },
@@ -59,7 +63,12 @@
     { "src": ["autogroup:admin"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:443"] },
 
     // 각자 자기 기기끼리는 허용 (노트북 ↔ 자기 PC)
-    { "src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"] }
+    { "src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"] },
+
+    // A·B 워커와 두 DB 사이에서 db-a, db-b 대상으로 3306(DB 복제)과 22(백업 파일 전송)만 허용
+    { "src": ["tag:durian-onprem-a", "tag:durian-onprem-b", "db-a", "db-b"],
+      "dst": ["db-a", "db-b"],
+      "ip":  ["tcp:3306", "tcp:22"] }
   ],
 
   // Tailscale SSH: 온프렘 노드에만, ubuntu 계정으로만, 접속할 때마다 다시 로그인 확인(check). root 접속은 허용하지 않음
@@ -97,6 +106,10 @@
     { "src": "tag:durian-onprem-a", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:9090"] },
 
     // 온프렘 노드는 AWS 노드로 먼저 연결하지 못함
-    { "src": "tag:durian-onprem-a", "deny": ["tag:durian-worker:6443", "tag:durian-master:6443", "tag:durian-monitor:9090"] }
+    { "src": "tag:durian-onprem-a", "deny": ["tag:durian-worker:6443", "tag:durian-master:6443", "tag:durian-monitor:9090"] },
+    
+    //무엇: A워커→db-b, B워커→db-a는 3306·22 허용(accept), k8s API·kubelet은 계속 차단(deny)
+    { "src": "tag:durian-onprem-a", "accept": ["db-b:3306", "db-b:22"], "deny":   ["db-b:6443", "db-b:10250"] },
+    { "src": "tag:durian-onprem-b", "accept": ["db-a:3306", "db-a:22"], "deny":   ["db-a:6443", "db-a:10250"] }
   ]
 }
