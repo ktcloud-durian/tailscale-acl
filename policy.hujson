@@ -82,7 +82,7 @@
   // SSH 규칙의 src에는 역할 autogroup 중 autogroup:member만 쓸 수 있음. 실제로 들어갈 수 있는 사람은
   // 위 grants의 tcp:22(autogroup:admin만)로 한 번 더 걸러짐. AWS 노드는 SSM으로만 접속하므로 넣지 않음
   "ssh": [
-    { "action": "check", "src": ["autogroup:member"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "users": ["ubuntu"] }
+    { "action": "check", "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "users": ["ubuntu"] }
   ],
 
 
