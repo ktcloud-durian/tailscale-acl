@@ -18,7 +18,9 @@
     "kolla-api-a": "192.168.128.10",   // A OpenStack API (관리 VIP). A 호스트가 /32 경로를 광고
     "kolla-api-b": "192.168.120.10",    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
     "db-a": "10.30.40.21/32",  // A OpenStack 고객 DB VM (Tailscale 없음, A 워커가 /32 광고)
-    "db-b": "10.31.40.21/32"   // B OpenStack 고객 DB VM (Tailscale 없음, B 워커가 /32 광고)
+    "db-b": "10.31.40.21/32",
+	"db-b": "10.31.40.21/32",
+	"core-api": "10.30.20.200"// B OpenStack 고객 DB VM (Tailscale 없음, B 워커가 /32 광고)
     // core-api 주소가 정해지면 위 줄 끝에 쉼표를 붙이고 추가: "core-api": "<core-api MetalLB 주소>"
   },
 
@@ -55,7 +57,11 @@
 
     // 서비스: AWS 웹 → 온프렘 내부 API (서비스 토큰 필수, 보안 기준서 DAT-05). 고객 DB 3306은 넣지 않음
     // core-api 주소가 정해지면 주석을 풀기
-    // { "src": ["tag:durian-master", "tag:durian-worker"], "dst": ["core-api"], "ip": ["tcp:4000"] },
+    {
+  "src": ["tag:durian-worker"],
+  "dst": ["core-api"],
+  "ip": ["tcp:4000"]
+	},
 
     // 관리: 운영 담당만 온프렘 노드 SSH 허용
     { "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:22"] },
@@ -117,7 +123,7 @@
     { "src": "tag:durian-onprem-a", "accept": ["db-b:3306", "db-b:22"], "deny": ["db-b:6443", "db-b:10250"] },
     // 온프렘 외에는 아무도 DB로 못 감 (AWS·Monitor → DB 차단, DAT-04)
     { "src": "tag:durian-monitor", "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
-    { "src": "tag:durian-worker",  "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
+    { "src": "tag:durian-worker", "accept": ["core-api:4000"], "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
     { "src": "tag:durian-master",  "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] }
   ]
 }
