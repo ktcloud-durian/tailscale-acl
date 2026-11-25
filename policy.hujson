@@ -60,7 +60,7 @@
     // 관리: 운영 담당만 온프렘 노드 SSH 허용
     { "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:22"] },
     // 팀원 전체가 Horizon에 HTTP(TCP 80)로 접속하도록 허용
-    { "src": ["autogroup:admin"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:80"] },
+    { "src": ["autogroup:admin"], "dst": ["kolla-api-a", "kolla-api-b", ", "tag:durian-router"], "ip": ["tcp:80"] },
 
     // 각자 자기 기기끼리는 허용 (노트북 ↔ 자기 PC)
     { "src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"] },
