@@ -57,9 +57,10 @@
     // core-api 주소가 정해지면 주석을 풀기
     // { "src": ["tag:durian-master", "tag:durian-worker"], "dst": ["core-api"], "ip": ["tcp:4000"] },
 
-    // 관리: 운영 담당만 온프렘 노드 SSH와 OpenStack 대시보드
+    // 관리: 운영 담당만 온프렘 노드 SSH 허용
     { "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:22"] },
-    { "src": ["autogroup:admin"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:443"] },
+    // 팀원 전체가 Horizon에 HTTP(TCP 80)로 접속하도록 허용
+    { "src": ["autogroup:member"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:80"] },
 
     // 각자 자기 기기끼리는 허용 (노트북 ↔ 자기 PC)
     { "src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"] },
