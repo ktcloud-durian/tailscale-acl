@@ -9,14 +9,16 @@
 // - 온프렘 A(맥북)와 B(윈도우 VM)는 독립 클러스터 (11/21 확정) → A↔B 사이 통신 없음
 // - AWS는 AZ별 독립 클러스터, 각자 내장 DB (11/20) → AWS에서 온프렘 DB(3306)로 가는 길 없음
 // - 같은 사이트 안의 노드끼리(k3s 6443·8472·10250)는 각자 내부망(k3s-net, VPC)으로 통신하므로 Tailscale 규칙이 필요 없음
-// - Grafana(3000)·Alertmanager(9093)는 Monitor EC2에서 127.0.0.1에만 열고, tailscale serve로 팀원에게만 HTTPS로 보여줌
-//   (443 → Grafana, 8443 → Alertmanager). Prometheus(9090)는 SSM 포트 포워딩으로만
+// - Grafana(3000)·Prometheus(9090)·Alertmanager(9093)는 Monitor EC2에서 127.0.0.1에만 열고 SSM 포트 포워딩으로만 봄
+//   (durian-infra #18, 11/24 결정). 그래서 Tailscale로 Monitor에 들어가는 규칙은 없음
+// - 예외: 온프렘 A·B DB 복제·백업만 db-a·db-b 주소로 좁게 허용 (보안 기준서 EX-13, 승격 대비 3306 양방향)
+// - 구축 예외: 관리자 → tag:durian-router SSH 22 (#8, 구축이 끝나면 제거)
 {
   "hosts": {
     "kolla-api-a": "192.168.128.10",   // A OpenStack API (관리 VIP). A 호스트가 /32 경로를 광고
     "kolla-api-b": "192.168.120.10",    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
-    "db-a": "10.30.40.21/32", //A OpensStack DB
-    "db-b": "10.31.40.21/32"  //B OpensStack DB 
+    "db-a": "10.30.40.21/32",  // A OpenStack 고객 DB VM (Tailscale 없음, A 워커가 /32 광고)
+    "db-b": "10.31.40.21/32"   // B OpenStack 고객 DB VM (Tailscale 없음, B 워커가 /32 광고)
     // core-api 주소가 정해지면 위 줄 끝에 쉼표를 붙이고 추가: "core-api": "<core-api MetalLB 주소>"
   },
 
@@ -55,9 +57,6 @@
     // core-api 주소가 정해지면 주석을 풀기
     // { "src": ["tag:durian-master", "tag:durian-worker"], "dst": ["core-api"], "ip": ["tcp:4000"] },
 
-    // 화면: 팀원 → Monitor EC2의 tailscale serve (443 Grafana, 8443 Alertmanager). 3000·9090·9093 포트 자체는 열지 않음
-    { "src": ["autogroup:member"], "dst": ["tag:durian-monitor"], "ip": ["tcp:443", "tcp:8443"] },
-
     // 관리: 운영 담당만 온프렘 노드 SSH 허용
     { "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:22"] },
     // 팀원 전체가 Horizon에 HTTP(TCP 80)로 접속하도록 허용
@@ -70,10 +69,13 @@
     // 기기의 Tailscale IP/MagicDNS 이름으로 접속. 공개키와 로그인 계정은 대상 sshd에서 관리
     { "src": ["autogroup:admin"], "dst": ["tag:durian-router"], "ip": ["tcp:22"] },
 
-    // A·B 워커와 두 DB 사이에서 db-a, db-b 대상으로 3306(DB 복제)과 22(백업 파일 전송)만 허용
-    { "src": ["tag:durian-onprem-a", "tag:durian-onprem-b", "db-a", "db-b"],
-      "dst": ["db-a", "db-b"],
-      "ip":  ["tcp:3306", "tcp:22"] }
+    // DB 복제·백업 (EX-13). 상대 사이트 → DB로만, 출발지는 DB 주소와 그 사이트 노드(DB 경로 광고)
+    // 복제 3306: 평소 B(Replica) → db-a, A 장애로 B를 Primary로 올리면 A → db-b. 승격 때 ACL을 고치지 않도록 양방향 둠
+    { "src": ["tag:durian-onprem-b", "db-b"], "dst": ["db-a"], "ip": ["tcp:3306"] },
+    { "src": ["tag:durian-onprem-a", "db-a"], "dst": ["db-b"], "ip": ["tcp:3306"] },
+    // 백업 사본 전송 22: 백업 전용 계정·키로만. 백업 저장 방향이 정해지면 반대쪽 줄은 지움
+    { "src": ["tag:durian-onprem-a", "db-a"], "dst": ["db-b"], "ip": ["tcp:22"] },
+    { "src": ["tag:durian-onprem-b", "db-b"], "dst": ["db-a"], "ip": ["tcp:22"] }
   ],
 
   // Tailscale SSH: 온프렘 노드에만, ubuntu 계정으로만, 접속할 때마다 다시 로그인 확인(check). root 접속은 허용하지 않음
@@ -103,18 +105,19 @@
     { "src": "tag:durian-onprem-b",
       "deny": ["tag:durian-onprem-a:6443", "tag:durian-onprem-a:10250", "tag:durian-onprem-a:3306", "tag:durian-onprem-a:22", "kolla-api-a:5000"] },
 
-    // AWS·온프렘 서버는 모니터링 화면에 못 들어감 (화면은 사람만)
-    { "src": "tag:durian-worker", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090"] },
-
-    // 모니터링 화면(443·8443)은 서버 쪽에서 못 감. 3000·9090·9093 포트 자체는 아무도 못 감
+    // Monitor 화면은 SSM으로만 봄: 서버 쪽에서 Monitor의 443·8443·3000·9090·9093으로 못 감
     { "src": "tag:durian-worker", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090", "tag:durian-monitor:9093"] },
     { "src": "tag:durian-onprem-a", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:9090"] },
 
     // 온프렘 노드는 AWS 노드로 먼저 연결하지 못함
     { "src": "tag:durian-onprem-a", "deny": ["tag:durian-worker:6443", "tag:durian-master:6443", "tag:durian-monitor:9090"] },
     
-    //무엇: A워커→db-b, B워커→db-a는 3306·22 허용(accept), k8s API·kubelet은 계속 차단(deny)
-    { "src": "tag:durian-onprem-a", "accept": ["db-b:3306", "db-b:22"], "deny":   ["db-b:6443", "db-b:10250"] },
-    { "src": "tag:durian-onprem-b", "accept": ["db-a:3306", "db-a:22"], "deny":   ["db-a:6443", "db-a:10250"] }
+    // DB 예외(EX-13)가 의도한 방향·포트에만 적용되는지
+    { "src": "tag:durian-onprem-b", "accept": ["db-a:3306", "db-a:22"], "deny": ["db-a:6443", "db-a:10250"] },
+    { "src": "tag:durian-onprem-a", "accept": ["db-b:3306", "db-b:22"], "deny": ["db-b:6443", "db-b:10250"] },
+    // 온프렘 외에는 아무도 DB로 못 감 (AWS·Monitor → DB 차단, DAT-04)
+    { "src": "tag:durian-monitor", "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
+    { "src": "tag:durian-worker",  "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
+    { "src": "tag:durian-master",  "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] }
   ]
 }
