@@ -65,6 +65,10 @@
     // 각자 자기 기기끼리는 허용 (노트북 ↔ 자기 PC)
     { "src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"] },
 
+    // 구축 예외: 관리자만 durian-router 기기(kolla-b 등)에 일반 SSH(공개키 인증) 접속 허용
+    // 기기의 Tailscale IP/MagicDNS 이름으로 접속. 공개키와 로그인 계정은 대상 sshd에서 관리
+    { "src": ["autogroup:admin"], "dst": ["tag:durian-router"], "ip": ["tcp:22"] },
+
     // A·B 워커와 두 DB 사이에서 db-a, db-b 대상으로 3306(DB 복제)과 22(백업 파일 전송)만 허용
     { "src": ["tag:durian-onprem-a", "tag:durian-onprem-b", "db-a", "db-b"],
       "dst": ["db-a", "db-b"],
