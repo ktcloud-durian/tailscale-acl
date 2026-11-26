@@ -19,7 +19,8 @@
     "kolla-api-b": "192.168.120.10",    // B OpenStack API (관리 VIP). B 호스트가 /32 경로를 광고
     "db-a": "10.30.40.21/32",  // A OpenStack 고객 DB VM (Tailscale 없음, A 워커가 /32 광고)
     "db-b": "10.31.40.21/32",   // B OpenStack 고객 DB VM (Tailscale 없음, B 워커가 /32 광고)
-	  "core-api": "10.30.20.200/32", // Openstack(A 호스트)과 AWS 통신하기 위한 API
+    "core-api": "10.30.20.200/32", // Openstack(A 호스트)과 AWS 통신하기 위한 API
+    "core-api": "10.31.20.200/32", //OpensStack(B 호스트)과 AWS 통신하기 위한 API
   },
 
   "tagOwners": {
@@ -42,7 +43,9 @@
       "192.168.120.10/32": ["tag:durian-router"],
       "10.30.40.21/32": ["tag:durian-onprem-a"], //tag:durian-onprem-a 노드는 db-a 주소만 승인
       "10.31.40.21/32": ["tag:durian-onprem-b"], //tag:durian-onprem-b 노드는 db-b 주소만 승인
-      "10.30.20.200/32": ["tag:durian-onprem-a"]
+      "10.30.20.200/32": ["tag:durian-onprem-a"],
+      "10.31.20.200/32": ["tag:durian-onprem-b"]
+      
     }
   },
 
