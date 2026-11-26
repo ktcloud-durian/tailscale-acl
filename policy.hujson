@@ -57,7 +57,7 @@
     { "src": ["tag:durian-monitor"], "dst": ["kolla-api-a", "kolla-api-b"], "ip": ["tcp:5000", "tcp:8774", "tcp:9696", "tcp:9292"] },
 
     // 서비스: AWS 웹 → 온프렘 내부 API (서비스 토큰 필수, 보안 기준서 DAT-05). 고객 DB 3306은 넣지 않음
-    { "src": ["tag:durian-worker"], "dst": ["core-api-a", "core-api-b"], "ip": ["tcp:4000"] },
+    { "src": ["tag:durian-worker", "tag:durian-master"], "dst": ["core-api-a", "core-api-b"], "ip": ["tcp:4000"] },
 
     // 관리: 운영 담당만 온프렘 노드 SSH 허용
     { "src": ["autogroup:admin"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:22"] },
@@ -120,6 +120,6 @@
     // 온프렘 외에는 아무도 DB로 못 감 (AWS·Monitor → DB 차단, DAT-04)
     { "src": "tag:durian-monitor", "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
     { "src": "tag:durian-worker", "accept": ["core-api-a:4000", "core-api-b:4000"], "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] },
-    { "src": "tag:durian-master",  "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] }
+    { "src": "tag:durian-master", "accept": ["core-api-a:4000", "core-api-b:4000"], "deny": ["db-a:3306", "db-a:22", "db-b:3306", "db-b:22"] }
   ]
 }
