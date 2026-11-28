@@ -9,8 +9,8 @@
 // - 온프렘 A(맥북)와 B(윈도우 VM)는 독립 클러스터 (11/21 확정) → A↔B 사이 통신 없음
 // - AWS는 AZ별 독립 클러스터, 각자 내장 DB (11/20) → AWS에서 온프렘 DB(3306)로 가는 길 없음
 // - 같은 사이트 안의 노드끼리(k3s 6443·8472·10250)는 각자 내부망(k3s-net, VPC)으로 통신하므로 Tailscale 규칙이 필요 없음
-// - Grafana(3000)·Prometheus(9090)·Alertmanager(9093)는 Monitor EC2에서 127.0.0.1에만 열고 SSM 포트 포워딩으로만 봄
-//   (durian-infra #18, 11/24 결정). 그래서 Tailscale로 Monitor에 들어가는 규칙은 없음
+// - Grafana(3000)는 Monitor EC2의 127.0.0.1:3000을 Tailscale Serve TCP 3000으로 팀원에게 제공
+// - Prometheus(9090)·Alertmanager(9093)는 127.0.0.1에만 열고 SSM 포트 포워딩으로만 봄
 // - 예외: 온프렘 A·B DB 복제·백업만 db-a·db-b 주소로 좁게 허용 (보안 기준서 EX-13, 승격 대비 3306 양방향)
 // - 구축 예외: 관리자 → tag:durian-router SSH 22 (#8, 구축이 끝나면 제거)
 {
@@ -50,6 +50,9 @@
   },
 
   "grants": [
+    // 팀원 → Grafana: Tailscale Serve TCP 3000을 통해서만 접속
+    { "src": ["autogroup:member"], "dst": ["tag:durian-monitor"], "ip": ["tcp:3000"] },
+
     // 모니터링: Monitor → 온프렘 노드 지표 (Node Exporter는 노드의 Tailscale IP:9100에서만 들음)
     { "src": ["tag:durian-monitor"], "dst": ["tag:durian-onprem-a", "tag:durian-onprem-b"], "ip": ["tcp:9100"] },
 
@@ -107,9 +110,11 @@
     { "src": "tag:durian-onprem-b",
       "deny": ["tag:durian-onprem-a:6443", "tag:durian-onprem-a:10250", "tag:durian-onprem-a:3306", "tag:durian-onprem-a:22", "kolla-api-a:5000"] },
 
-    // Monitor 화면은 SSM으로만 봄: 서버 쪽에서 Monitor의 443·8443·3000·9090·9093으로 못 감
+    // Grafana는 팀원 기기만 허용: 서버의 Monitor 접근은 차단, Prometheus·Alertmanager는 SSM 전용
     { "src": "tag:durian-worker", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090", "tag:durian-monitor:9093"] },
-    { "src": "tag:durian-onprem-a", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:9090"] },
+    { "src": "tag:durian-master", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090", "tag:durian-monitor:9093"] },
+    { "src": "tag:durian-onprem-a", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090", "tag:durian-monitor:9093"] },
+    { "src": "tag:durian-onprem-b", "deny": ["tag:durian-monitor:443", "tag:durian-monitor:8443", "tag:durian-monitor:3000", "tag:durian-monitor:9090", "tag:durian-monitor:9093"] },
 
     // 온프렘 노드는 AWS 노드로 먼저 연결하지 못함
     { "src": "tag:durian-onprem-a", "deny": ["tag:durian-worker:6443", "tag:durian-master:6443", "tag:durian-monitor:9090"] },
