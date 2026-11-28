@@ -4,10 +4,12 @@
 
 공개 저장소라서 `policy.hujson`에 **이메일을 넣지 않아요.** 사람은 Tailscale 역할로만 지정해요.
 
-- `autogroup:member`: tailnet 팀원 전체 (Monitor 화면 443·8443)
+- `autogroup:member`: tailnet 팀원 전체 (Grafana TCP 3000, Tailscale Serve 경유)
 - `autogroup:admin`: 관리 콘솔에서 **Admin** 역할을 준 운영 담당 5명 (온프렘 SSH, OpenStack 대시보드, 태그 소유)
 
 누가 운영 담당인지는 콘솔의 Users → 역할로 정해요. 파일에 이메일 모양이 들어가면 워크플로가 실패해요.
+
+Grafana는 팀 Tailnet에 연결한 PC에서 `http://100.107.149.49:3000`으로 접속해요. Monitor 기기에 `tag:durian-monitor`가 붙어 있고 Tailscale Serve TCP 3000이 설정되어 있어야 해요. Grafana 자체는 localhost:3000에서만 수신하며, Prometheus(9090)와 Alertmanager(9093)는 SSM 포트 포워딩으로만 접근해요.
 
 ## 흐름
 
